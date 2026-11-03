@@ -2,11 +2,13 @@
 
 A macOS menu-bar homage to **WinFight** (Artematica, Windows 3.1). You launch it and nothing happens. Then, some time later, a little pixel cowboy pops up somewhere on your screen, hollers **"Draw!"**, and shoots you unless you click him first.
 
-| Too slow | Shot too early |
+| Too slow | Shot before the call |
 |---|---|
-| ![You're dead, partner](docs/youre-dead.png) | ![Bushwhacker](docs/bushwhacker.png) |
+| ![You're dead, partner](docs/youre-dead.png) | ![Coward](docs/coward.png) |
 
 - One bullet per duel. Miss and you're left with a bullet hole and an empty chamber.
+- Fire before he calls "Draw!" and it's a loss. **Coward!**
+- He can turn up anywhere on any screen.
 - **Fight Now** (⌘F) starts a duel straight away. **Timed Fight** ambushes you at random.
 - Three difficulties: Greenhorn (1.3s), Gunslinger (0.8s), Legend (0.5s).
 - He won't ambush you while your screen is locked or you're away from the keyboard.

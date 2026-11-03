@@ -354,7 +354,8 @@ final class OverlayWindow: NSWindow {
 final class OverlayView: NSView {
     weak var game: Game?
     var holes: [BulletHole] = []
-    var bubble: NSPoint? { didSet { needsDisplay = true } }
+    /// The cowboy's sprite rect while he is calling "Draw!".
+    var bubble: NSRect? { didSet { needsDisplay = true } }
     var flash: CGFloat = 0 { didSet { needsDisplay = true } }
     private let banner = BannerView()
 
@@ -396,22 +397,31 @@ final class OverlayView: NSView {
             bounds.fill(using: .sourceOver)
         }
         holes.forEach { $0.draw() }
-        if let bubble { drawBubble(at: bubble) }
+        if let bubble { drawBubble(beside: bubble) }
     }
 
-    private func drawBubble(at tip: NSPoint) {
+    private func drawBubble(beside sprite: NSRect) {
         let text = NSAttributedString(string: "DRAW!", attributes: [
             .font: western(42),
             .foregroundColor: NSColor(calibratedRed: 0.6, green: 0.08, blue: 0.05, alpha: 1),
         ])
         let size = text.size()
-        let box = NSRect(x: tip.x + 16, y: tip.y + 22, width: size.width + 36, height: size.height + 18)
-        let path = NSBezierPath(roundedRect: box, xRadius: 16, yRadius: 16)
+        let width = size.width + 36, height = size.height + 18
+        // Up and to the right by default; flip left or down when he's near an edge.
+        let right = sprite.maxX + 8 + width <= bounds.maxX - 8
+        let tip = NSPoint(x: right ? sprite.maxX - 8 : sprite.minX + 8, y: sprite.maxY - 10)
+        let above = tip.y + 22 + height <= bounds.maxY - 8
+        let box = NSRect(x: right ? tip.x + 16 : tip.x - 16 - width,
+                         y: above ? tip.y + 22 : tip.y - 10 - height,
+                         width: width, height: height)
+        let baseX = right ? box.minX + 14 : box.maxX - 38
+        let baseY = above ? box.minY + 2 : box.maxY - 2
         let tail = NSBezierPath()
-        tail.move(to: NSPoint(x: box.minX + 14, y: box.minY + 2))
+        tail.move(to: NSPoint(x: baseX, y: baseY))
         tail.line(to: tip)
-        tail.line(to: NSPoint(x: box.minX + 38, y: box.minY + 2))
+        tail.line(to: NSPoint(x: baseX + 24, y: baseY))
         tail.close()
+        let path = NSBezierPath(roundedRect: box, xRadius: 16, yRadius: 16)
         path.append(tail)
         path.windingRule = .nonZero
         NSColor(calibratedRed: 1, green: 0.97, blue: 0.88, alpha: 1).setFill()
@@ -529,8 +539,9 @@ final class Game {
 
         let visible = target.visibleFrame.offsetBy(dx: -target.frame.minX, dy: -target.frame.minY)
         let size = CowboyView.size
-        let x = CGFloat.random(in: visible.minX + 20 ... max(visible.minX + 20, visible.maxX - size.width - 200))
-        let y = CGFloat.random(in: visible.minY + 10 ... max(visible.minY + 10, visible.maxY - size.height - 100))
+        // Anywhere in the usable area (menu bar and Dock excluded), edge to edge.
+        let x = CGFloat.random(in: visible.minX ... max(visible.minX, visible.maxX - size.width))
+        let y = CGFloat.random(in: visible.minY ... max(visible.minY, visible.maxY - size.height))
         let cowboy = CowboyView(frame: NSRect(origin: NSPoint(x: x, y: y), size: size))
         cowboy.alphaValue = 0
         arena?.addSubview(cowboy)
@@ -547,7 +558,7 @@ final class Game {
         guard phase == .standoff, let cowboy, let arena else { return }
         phase = .draw
         drawTime = CACurrentMediaTime()
-        arena.bubble = NSPoint(x: cowboy.frame.minX + 52, y: cowboy.frame.minY + 70)
+        arena.bubble = cowboy.hitBox
 
         let utterance = AVSpeechUtterance(string: "Draw!")
         utterance.rate = 0.45
@@ -569,14 +580,16 @@ final class Game {
         }
         loaded = false
         Sound.gunshot()
-        if view === arena, let cowboy, cowboy.hitBox.contains(point) {
-            win(early: phase == .standoff)
-        } else {
-            view.addHole(point)
+        let hit = view === arena && (cowboy?.hitBox.contains(point) ?? false)
+        if !hit { view.addHole(point) }
+        if phase == .standoff {
+            coward(hit: hit)
+        } else if hit {
+            win()
         }
     }
 
-    private func win(early: Bool) {
+    private func win() {
         cancelTimers()
         phase = .over
         speech.stopSpeaking(at: .immediate)
@@ -584,15 +597,25 @@ final class Game {
         cowboy?.pose = .dead
 
         settings.wins += 1
-        if early {
-            arena?.announce("BUSHWHACKER!", "Shot him before he called it. Counts, but it ain't pretty.", avoiding: cowboy?.frame)
-        } else {
-            let ms = Int((CACurrentMediaTime() - drawTime) * 1000)
-            let record = settings.best.map { ms < $0 } ?? true
-            if record { settings.best = ms }
-            let quip = record ? "Fastest gun in the West." : ms < 400 ? "Lightning." : "Not bad, partner."
-            arena?.announce("GOT HIM!", "\(ms) ms — \(quip)", avoiding: cowboy?.frame)
-        }
+        let ms = Int((CACurrentMediaTime() - drawTime) * 1000)
+        let record = settings.best.map { ms < $0 } ?? true
+        if record { settings.best = ms }
+        let quip = record ? "Fastest gun in the West." : ms < 400 ? "Lightning." : "Not bad, partner."
+        arena?.announce("GOT HIM!", "\(ms) ms — \(quip)", avoiding: cowboy?.frame)
+        onRecordChange?()
+        after(2.6) { [weak self] in self?.endDuel() }
+    }
+
+    /// Firing before he calls "Draw!" is a loss, hit or miss.
+    private func coward(hit: Bool) {
+        cancelTimers()
+        phase = .over
+        arena?.bubble = nil
+        if hit { cowboy?.pose = .dead }
+
+        settings.losses += 1
+        let detail = hit ? "Shot him before he called it. That's a loss." : "Fired before he called it. That's a loss."
+        arena?.announce("COWARD!", detail, avoiding: cowboy?.frame)
         onRecordChange?()
         after(2.6) { [weak self] in self?.endDuel() }
     }
@@ -604,7 +627,14 @@ final class Game {
         cowboy.pose = .firing
         Sound.gunshot()
         arena.bubble = nil
-        arena.addHole(NSPoint(x: arena.bounds.midX, y: arena.bounds.midY + 140), big: true)
+        // He shoots at you: the hole lands wherever your cursor is.
+        let mouse = NSEvent.mouseLocation
+        if let window = overlays.first(where: { NSMouseInRect(mouse, $0.frame, false) }),
+           let view = window.contentView as? OverlayView {
+            view.addHole(NSPoint(x: mouse.x - window.frame.minX, y: mouse.y - window.frame.minY), big: true)
+        } else {
+            arena.addHole(NSPoint(x: arena.bounds.midX, y: arena.bounds.midY), big: true)
+        }
         arena.announce("YOU'RE DEAD, PARTNER", "Too slow on the draw.", avoiding: cowboy.frame)
         settings.losses += 1
         onRecordChange?()
