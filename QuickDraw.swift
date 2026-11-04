@@ -607,21 +607,27 @@ final class Game {
     }
 
     /// Firing before he calls "Draw!" is a loss, hit or miss.
+    /// A miss means he's still standing, and he shoots back.
     private func coward(hit: Bool) {
         cancelTimers()
         phase = .over
         arena?.bubble = nil
-        if hit { cowboy?.pose = .dead }
-
+        guard hit else {
+            after(0.25) { [weak self] in self?.cowboy?.pose = .drawn }
+            after(0.55) { [weak self] in
+                self?.cowboyFires("DEAD COWARD", "Fired before he called it, and missed.")
+            }
+            return
+        }
+        cowboy?.pose = .dead
         settings.losses += 1
-        let detail = hit ? "Shot him before he called it. That's a loss." : "Fired before he called it. That's a loss."
-        arena?.announce("COWARD!", detail, avoiding: cowboy?.frame)
+        arena?.announce("COWARD!", "Shot him before he called it. That's a loss.", avoiding: cowboy?.frame)
         onRecordChange?()
         after(2.6) { [weak self] in self?.endDuel() }
     }
 
-    private func cowboyFires() {
-        guard phase == .draw, let cowboy, let arena else { return }
+    private func cowboyFires(_ title: String = "YOU'RE DEAD, PARTNER", _ detail: String = "Too slow on the draw.") {
+        guard phase == .draw || phase == .over, let cowboy, let arena else { return }
         cancelTimers()
         phase = .over
         cowboy.pose = .firing
@@ -635,7 +641,7 @@ final class Game {
         } else {
             arena.addHole(NSPoint(x: arena.bounds.midX, y: arena.bounds.midY), big: true)
         }
-        arena.announce("YOU'RE DEAD, PARTNER", "Too slow on the draw.", avoiding: cowboy.frame)
+        arena.announce(title, detail, avoiding: cowboy.frame)
         settings.losses += 1
         onRecordChange?()
 
@@ -766,6 +772,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.settings.best = nil
         })
         menu.addItem(.separator())
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "dev"
+        let build = info?["CFBundleVersion"] as? String ?? "0"
+        menu.addItem(withTitle: "Quick Draw \(version) (build \(build))", action: nil, keyEquivalent: "")
         menu.addItem(MenuItem("Quit Quick Draw", key: "q") { NSApp.terminate(nil) })
     }
 }

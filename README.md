@@ -7,7 +7,7 @@ A macOS menu-bar homage to **WinFight** (Artematica, Windows 3.1). You launch it
 | ![You're dead, partner](docs/youre-dead.png) | ![Coward](docs/coward.png) |
 
 - One bullet per duel. Miss and you're left with a bullet hole and an empty chamber.
-- Fire before he calls "Draw!" and it's a loss. **Coward!**
+- Fire before he calls "Draw!" and it's a loss. **Coward!** Miss, and he shoots you anyway. **Dead coward.**
 - He can turn up anywhere on any screen.
 - **Fight Now** (⌘F) starts a duel straight away. **Timed Fight** ambushes you at random.
 - Three difficulties: Greenhorn (1.3s), Gunslinger (0.8s), Legend (0.5s).
